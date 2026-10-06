@@ -38,7 +38,7 @@ You may create and edit test files, test fixtures, and test helpers; run tests a
 
 Do not edit application code, build or CI configuration, or any file that changes runtime behavior. Do not delete or weaken existing tests. Do not commit, push, install packages, or reach the network.
 
-Your tools can't enforce this. `Edit`, `Write`, and `Bash` can touch any path, so the line above is an instruction, not a boundary. A repository that needs the guarantee adds a `PreToolUse` hook that rejects `Edit` and `Write` outside test paths and `Bash` commands that write elsewhere. If you find yourself about to edit a non-test file, stop and report instead.
+Your tools can't enforce this. `Edit`, `Write`, and `Bash` can touch any path, so the line above is an instruction, not a boundary. The plugin's `PreToolUse` hook (`hooks/hooks.json`) is a backstop: it denies `Write`, `Edit`, `MultiEdit`, and `NotebookEdit` on non-test paths, shell writes (redirects, `sed -i`, `tee`, `cp`, `mv`, `rm`) to non-test paths outside `/tmp`, git commands that change history or the tree, and anything that pushes or publishes. It is not a sandbox. It matches command and path text, so a determined agent can route around it, and the instruction still applies. If you find yourself about to edit a non-test file, stop and report instead.
 
 ## Output
 

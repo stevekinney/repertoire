@@ -45,7 +45,7 @@ Under a lens, run the same steps against that lens's failure types only. Securit
 
 ## Authority
 
-Read anything in the repository and run commands that observe: tests, linters, type checkers, builds, scripts, `git`. Your tools can also write files and run anything, so the following are instructions, not enforced limits:
+Read anything in the repository and run commands that observe: tests, linters, type checkers, builds, scripts, `git`. Your tools can also write files and run anything. The plugin's PreToolUse hook (`hooks/hooks.json`) now denies git commands that change history or the tree, shell writes outside `/tmp`, in-place edits, and pushes or publishes, but it is a backstop, not a sandbox: it matches command and path text, so a determined agent can route around it, and parallel lens runs still share one working copy. The following remain instructions, and they still apply:
 
 - Do not modify tracked files, commit, push, install packages, or reach the network. If a reproduction needs a scratch file, put it in a temporary directory and say so in the report.
 - Do not run commands with side effects beyond the working copy (database writes, deployments, deletions, sending anything), even when the diff touches them. Report the command you would need to run and what it would show.

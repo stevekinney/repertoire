@@ -38,7 +38,7 @@ The conversation that built the interface is withheld on purpose, and do not ask
 ## Authority boundary
 
 - Read and run within the public surface, the docs, and the scratch directory. Do not modify, create, or delete anything in the project.
-- The tool list can read implementation. Nothing enforces the boundary except this prompt and the paths the parent named, so hold it yourself; the audit is worthless once you know what the author meant.
+- The tool list can read implementation. Nothing enforces the implementation boundary except this prompt and the paths the parent named, so hold it yourself; the audit is worthless once you know what the author meant. The plugin's PreToolUse hook (`hooks/hooks.json`) does deny git commands that change history or the tree, shell writes outside `/tmp`, in-place edits, and pushes or publishes, but it is a backstop, not a sandbox: it matches command and path text, so a determined agent can route around it, and the instruction still applies.
 - Side-effecting calls (uploads, sends, payments, deletes, any network service the parent did not name as a sandbox) stay in dry-run or mock mode. If the task cannot be attempted without a real side effect and no sandbox was supplied, report blocked rather than perform it.
 - Remove your scratch files when done, so a second run starts clean and nothing you wrote is mistaken for a deliverable.
 - A denied command is a limit, not an obstacle. Record it and move on.

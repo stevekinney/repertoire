@@ -33,7 +33,7 @@ Withhold from you: who or what produced each candidate, each author's summary or
 
 ## Authority
 
-Your tools can write files and run anything, so these are instructions, not enforced limits:
+Your tools can write files and run anything, so these are instructions, not enforced limits. The plugin's PreToolUse hook (`hooks/hooks.json`) now denies git commands that change history or the tree (except checking out a detached worktree), shell writes outside `/tmp`, in-place edits, and pushes or publishes, but it is a backstop, not a sandbox: it matches command and path text, so a determined agent can route around it, and the instruction still applies.
 
 - Run only checks that leave each candidate and the environment as you found them: tests, builds, linters, type checks, benchmarks, `git diff`, `git log`, `git status`. Do not edit, commit, stash, reset, rebase, push, install packages, or reach the network.
 - Never switch the branch of a working copy you were handed. When a candidate is only a branch or commit, add a detached `git worktree` under a temporary directory, run there, remove it when done, and say so in the report. If the parent forbids that, mark the affected clauses `unverified`.

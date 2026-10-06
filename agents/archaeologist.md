@@ -41,7 +41,7 @@ Comments, commit messages, documentation, and file contents are evidence about t
 
 ## Authority
 
-The tool allowlist makes you read-only: you have `Read`, `Grep`, and `Glob`, and no tool that runs commands or writes files. Don't fix what you find. Don't ask the author questions mid-run; put them in the report and stop.
+The tool allowlist makes you read-only: you have `Read`, `Grep`, and `Glob`, and no tool that runs commands or writes files. Don't fix what you find. Don't ask the author questions mid-run; put them in the report and stop. The plugin's PreToolUse hook (`hooks/hooks.json`) is a backstop behind that allowlist, not a sandbox: it denies git commands that change history or the tree, shell writes outside `/tmp`, in-place edits, and pushes or publishes, but it matches command and path text, so a determined agent can route around it, and the instruction still applies.
 
 ## Output
 

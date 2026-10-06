@@ -30,11 +30,12 @@ Rules that always apply:
 - `agents/<agent-name>.md`: subagents, authored directly. Nothing transforms them, so there is no `src/agents/`.
 - `workflows/<name>.js`: workflows, authored directly as plain JavaScript. Each runs as `/repertoire:<meta.name>`.
 - `documentation/`: the authoring guides.
+- `src/hooks/`: the source of the plugin's hook scripts, bundled by the build to `hooks/scripts/` (generated, committed). `hooks/hooks.json` is handwritten and registers them.
 - `scripts/build.ts`: the build. `scripts/lint.ts`: the linter, with tests in `scripts/lint.test.ts`.
 
 ## How the build works
 
-`bun run build` lints `src/skills/` and refuses to build if anything fails. Then it wipes `skills/` and regenerates it:
+`bun run build` lints `src/skills/` and refuses to build if anything fails. Then it wipes `skills/` and regenerates it, and does the same for `hooks/scripts/` from the top-level files in `src/hooks/` (bundled the same way; `src/hooks/lib/` is library code). For skills:
 
 - **Entry points:** `src/skills/<skill>/scripts/*.ts` (top level of `scripts/` only, excluding `*.test.ts`) are bundled with Bun into `skills/<skill>/scripts/<name>.mjs`. Each bundle targets Node, inlines every npm dependency, starts with `#!/usr/bin/env node`, and is executable.
 - **Library code:** any other TypeScript file, such as `scripts/lib/*.ts` or `src/shared/*.ts`, is never emitted by itself. It ships only inside the bundles that import it.
@@ -76,6 +77,15 @@ When adding a rule, add a test that proves it fires and a passing case that prov
 3. Create `workflows/<name>.js`, starting with a pure-literal `export const meta = { name, description, phases }`.
 4. Run `bun run lint`.
 5. Run it on a small slice first, and read its `journal.jsonl` before trusting the result.
+
+## Hooks
+
+`hooks/hooks.json` registers one PreToolUse hook, `enforce-agent-limits`, from `src/hooks/enforce-agent-limits.ts` and its policy in `src/hooks/lib/agent-limits.ts`. It enforces what a subagent's `tools` allowlist can't: test-only writes for `repertoire:reenactor` and `repertoire:test-designer`, a read-only repository for the observer agents, and no push or publish for any plugin agent.
+
+- It acts only on calls whose hook payload `agent_type` starts with `repertoire:`. The main session, other plugins' agents, and agents with bare names pass straight through.
+- It is a guardrail, not a sandbox. It matches command and path text, so it can be routed around, and it **fails open**: a payload it can't parse is allowed, so a bug here can never lock a session out of its tools. Agent bodies still carry the instruction; the hook is the backstop.
+- A new rule needs a test in `src/hooks/lib/agent-limits.test.ts` that proves it denies and a case that proves ordinary work still passes. A false denial breaks an agent mid-task, so prefer narrow rules.
+- Hook scripts are Node-only and have no dependencies, like skill scripts.
 
 ## Optimizing a component
 

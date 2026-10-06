@@ -30,7 +30,7 @@ The transcript, the worker's summary, its reasoning, and any claim that the cond
 
 ## Authority
 
-- Run only checks that leave the repository and its environment as you found them: tests, builds, linters, type checks, `git diff`, `git status`, `git log`, reading files and images. Don't edit files, install dependencies, commit, stash, checkout, reset, delete, push, or start a service that outlives the check. Your tool list includes Bash, so nothing enforces this. It is part of the assignment, and the parent relies on it.
+- Run only checks that leave the repository and its environment as you found them: tests, builds, linters, type checks, `git diff`, `git status`, `git log`, reading files and images. Don't edit files, install dependencies, commit, stash, checkout, reset, delete, push, or start a service that outlives the check. Your tool list includes Bash, so the tool list itself doesn't enforce this. The plugin's PreToolUse hook (`hooks/hooks.json`) now denies git commands that change history or the tree, shell writes outside `/tmp`, in-place edits, and pushes or publishes, but it is a backstop, not a sandbox: it matches command and path text, so a determined agent can route around it, and the instruction still applies. It is part of the assignment, and the parent relies on it.
 - Don't fix anything, even a one-character failure. Report it as what is missing.
 - If a check needs something the environment lacks (a dependency, a service, a credential), don't obtain it. Mark the clause `unverified` with the error output and name the smallest step that would unblock it.
 - Bound every command with a timeout suited to the check: minutes for a test suite, seconds for `git`. A check that hangs is `unverified`, not failed.

@@ -25,6 +25,8 @@ import { formatFindings, lintSkills, shippedPath } from './lint';
 const root = resolve(import.meta.dir, '..');
 const sourceDirectory = join(root, 'src', 'skills');
 const outputDirectory = join(root, 'skills');
+const hookSourceDirectory = join(root, 'src', 'hooks');
+const hookOutputDirectory = join(root, 'hooks', 'scripts');
 const check = process.argv.includes('--check');
 
 const shebang = '#!/usr/bin/env node';
@@ -48,11 +50,16 @@ async function build(destination: string): Promise<boolean> {
     }
   }
 
+  return bundle(entryPoints, sourceDirectory, destination);
+}
+
+/** Bundle TypeScript entry points into self-contained Node `.mjs` files that keep their directory under `root`. */
+async function bundle(entryPoints: string[], entryRoot: string, destination: string): Promise<boolean> {
   if (entryPoints.length === 0) return true;
 
   const result = await Bun.build({
     entrypoints: entryPoints,
-    root: sourceDirectory,
+    root: entryRoot,
     outdir: destination,
     target: 'node',
     format: 'esm',
@@ -76,6 +83,13 @@ async function build(destination: string): Promise<boolean> {
   return true;
 }
 
+/** Hook scripts: every top-level `src/hooks/*.ts` except tests is an entry point (`src/hooks/lib/` is library code), built to `hooks/scripts/<name>.mjs`. */
+async function buildHooks(destination: string): Promise<boolean> {
+  if (!existsSync(hookSourceDirectory)) return true;
+  const entryPoints = walk(hookSourceDirectory).filter((file) => dirname(file) === hookSourceDirectory && /\.m?ts$/.test(file) && !/\.(test|spec|d)\.m?ts$/.test(file));
+  return bundle(entryPoints, hookSourceDirectory, destination);
+}
+
 function snapshot(directory: string): Map<string, string> {
   const files = new Map<string, string>();
   if (!existsSync(directory)) return files;
@@ -97,30 +111,46 @@ if (lintFindings.length > 0) {
 
 const staging = mkdtempSync(join(tmpdir(), 'repertoire-build-'));
 
+type Target = { label: string; staged: string; output: string; build: (destination: string) => Promise<boolean> };
+const targets: Target[] = [
+  { label: 'skills/', staged: join(staging, 'skills'), output: outputDirectory, build },
+  { label: 'hooks/scripts/', staged: join(staging, 'hooks'), output: hookOutputDirectory, build: buildHooks },
+];
+
 // Set `process.exitCode` rather than calling `process.exit()` so the `finally` cleanup runs.
 try {
-  if (!(await build(staging))) {
-    process.exitCode = 1;
-  } else if (check) {
-    const expected = snapshot(staging);
-    const actual = snapshot(outputDirectory);
-    const paths = [...new Set([...expected.keys(), ...actual.keys()])].sort();
-    const stale = paths.filter((path) => expected.get(path) !== actual.get(path));
-
-    if (stale.length > 0) {
-      console.error('skills/ is out of date with src/skills/. Run `bun run build`.\n');
-      for (const path of stale) {
-        const status = !actual.has(path) ? 'missing' : !expected.has(path) ? 'extra' : 'changed';
-        console.error(`  ${status}: skills/${path}`);
-      }
+  for (const target of targets) {
+    if (!(await target.build(target.staged))) {
       process.exitCode = 1;
-    } else {
-      console.log('skills/ is up to date.');
+      break;
     }
-  } else {
-    rmSync(outputDirectory, { recursive: true, force: true });
-    cpSync(staging, outputDirectory, { recursive: true });
-    console.log(`Built ${relative(root, outputDirectory)}/ from ${relative(root, sourceDirectory)}/.`);
+    mkdirSync(target.staged, { recursive: true });
+  }
+
+  if (process.exitCode !== 1 && check) {
+    let stale = false;
+    for (const target of targets) {
+      const expected = snapshot(target.staged);
+      const actual = snapshot(target.output);
+      const paths = [...new Set([...expected.keys(), ...actual.keys()])].sort();
+      const changed = paths.filter((path) => expected.get(path) !== actual.get(path));
+      if (changed.length === 0) continue;
+
+      stale = true;
+      console.error(`${target.label} is out of date with its source. Run \`bun run build\`.\n`);
+      for (const path of changed) {
+        const status = !actual.has(path) ? 'missing' : !expected.has(path) ? 'extra' : 'changed';
+        console.error(`  ${status}: ${target.label}${path}`);
+      }
+    }
+    if (stale) process.exitCode = 1;
+    else console.log('skills/ and hooks/scripts/ are up to date.');
+  } else if (process.exitCode !== 1) {
+    for (const target of targets) {
+      rmSync(target.output, { recursive: true, force: true });
+      if (snapshot(target.staged).size > 0) cpSync(target.staged, target.output, { recursive: true });
+    }
+    console.log(`Built skills/ from src/skills/ and hooks/scripts/ from src/hooks/.`);
   }
 } finally {
   rmSync(staging, { recursive: true, force: true });
