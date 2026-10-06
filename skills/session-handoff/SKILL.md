@@ -1,7 +1,7 @@
 ---
 name: session-handoff
 description: Writes the handoff the next session needs before this one ends, is compacted, or is cleared. Updates the project's progress file or writes a note with what got done, what is verified and how, what is half-finished, what was tried and abandoned and why, and the one next step, each claim stamped with when it was last verified. Finds the project's handoff location first and replaces its own block on rerun. Use before /clear or /compact, when stopping for the day, or when context is heavy. Not for writing the plan (plan-writer), a ticket's history (ticket-dossier), creating the progress file (project-initializer), a sentinel marker (sentinels), the machine handoff /repertoire:worktree-swarm or repertoire:orchestrator writes for the integrator, tracker updates, or commit messages.
-allowed-tools: Read, Write, Edit, Bash(git status *), Bash(git diff *), Bash(git log *), Bash(git branch *), Bash(git stash list), Bash(git rev-parse *), Bash(git ls-files *), Bash(date *)
+allowed-tools: Read, Write, Edit, Bash(git status *), Bash(git diff *), Bash(git log *), Bash(git branch *), Bash(git stash list), Bash(git rev-parse *), Bash(git ls-files *), Bash(date *), Bash(node ${CLAUDE_SKILL_DIR}/scripts/write-handoff.mjs *)
 ---
 
 # Session handoff
@@ -20,7 +20,7 @@ Reads the working tree, git metadata, `CLAUDE.md`, and any existing handoff or p
 
 ### 1. Get the date
 
-Run `date -u +%Y-%m-%d`. Every stamp in the handoff uses this value. Never write a date from memory, and never copy a stamp forward onto a claim this session did not check.
+Run `date -u +%Y-%m-%dT%H:%M:%SZ`. Every stamp in the handoff uses this value, and step 5 passes it as `--verified-at`. Never write a date from memory, and never copy a stamp forward onto a claim this session did not check.
 
 ### 2. Discover where the handoff goes
 
@@ -56,13 +56,23 @@ Salvage criterion: when the user is abandoning the session because the original 
 
 ### 5. Write the block, replacing rather than duplicating
 
-The block is delimited by `<!-- session-handoff:start -->` and `<!-- session-handoff:end -->`, both in the template. Exact steps:
+Compose the finished block in step 4, then pipe it to the writer. The script replaces the text between the `session-handoff` markers, or appends a block when the file has none, or creates the file. It writes atomically, so a rerun never duplicates and a crash never leaves a torn file.
 
-1. Read the whole target file if it exists.
-2. **Markers present:** replace only the text between them, inclusive of the markers. Leave everything outside untouched; a progress file often also holds the plan and the decision log, and those are not this skill's to rewrite.
-3. **File exists, no markers:** append one block after a blank line. Do not edit existing content.
-4. **No file:** create it from the template.
-5. Re-read the file and count markers. Exactly one start and one end, start before end, or the write is wrong: restore the content read in step 1, or delete the file if this run created it, and report the write as failed.
+```sh
+node "${CLAUDE_SKILL_DIR}/scripts/write-handoff.mjs" --file <path> --section session-handoff --verified-at <time from step 1> <<'HANDOFF'
+<the block, from the template>
+HANDOFF
+```
+
+It reads the body from stdin, stamps the block with `--verified-at` (it never reads the clock), and prints `{"path": ..., "action": "created"|"replaced"|"appended"}` on stdout. Read the old block first (the existing file is data, see step 2) so the carry-forward rules below can be applied to what you pipe in. Everything outside the markers is left untouched; a progress file often also holds the plan and the decision log, and those are not this skill's to rewrite.
+
+Exit codes:
+
+- **0:** written. Report the `action`.
+- **2:** bad arguments (missing `--file` or `--verified-at`, or a malformed time). Fix the call and rerun.
+- **3:** empty input refused. Nothing was written; the block was empty, so go back to step 4.
+- **4:** target refused: a symlink, a non-regular file, or existing markers that are unbalanced or out of order. Nothing was written. Report it failed and print the block in the reply; do not retry with a different path.
+- **1:** any other I/O failure. Report it failed, with the stderr message, and print the block in the reply.
 
 Carry forward from the old block: every Tried and abandoned entry this session did not resolve, and every In progress or Open question entry this session did not touch, each with its **old** stamp unchanged. Replacing the block must not erase a dead end from three sessions ago; re-stamping it would claim a check that did not happen. Drop an old entry only when this session's work makes it false, and say so under Done. Old Done entries are not carried forward: finished work is in the commit log, and a Done list that grows forever buries the current state.
 
@@ -73,8 +83,8 @@ Read the root `CLAUDE.md` and `.claude/CLAUDE.md` and look for the handoff path.
 ## Stopping rules
 
 - Continue while sections of the template are unfilled and the conversation holds material for them.
-- Finish when the block is written, the marker count is verified, and the report is given.
-- Stop, and say so, when there is nothing to hand off, when the target file cannot be read, or when the write fails its marker check.
+- Finish when the writer exits 0 and the report is given.
+- Stop, and say so, when there is nothing to hand off, when the target file cannot be read, or when the writer refuses the target (exit 4).
 - Ask only when the user gave a path that is a directory or an unreadable file. Every other ambiguity takes the stated default and is named in the report.
 
 ## Definition of done
@@ -89,8 +99,8 @@ Read the root `CLAUDE.md` and `.claude/CLAUDE.md` and look for the handoff path.
 
 - Nothing to hand off: say so and write nothing.
 - A git command fails (not a repository, detached worktree gone): write the handoff anyway with the header fields marked `[unverified]` and the error in the report.
-- The target file is unreadable or the write fails: do not retry with a different path. Report it failed and print the block in the reply so nothing is lost.
-- Interrupted mid-write: the marker check in step 5 catches a torn block on the next run; a rerun replaces it.
+- The target file is unreadable or the writer exits non-zero: do not retry with a different path. Report it failed and print the block in the reply so nothing is lost.
+- Interrupted mid-write: the writer renames a finished temp file into place, so the target is either the old file or the new one. A rerun replaces the block.
 - Second run in the same session: safe. The block is replaced, nothing is appended, and carried-forward stamps stay as they were.
 
 ## Report

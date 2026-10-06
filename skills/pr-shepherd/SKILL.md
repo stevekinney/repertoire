@@ -1,7 +1,7 @@
 ---
 name: pr-shepherd
 description: Takes an open pull request from opened to ready to merge. Each pass checks CI, mergeability, and unresolved review threads, then fixes failing checks at their cause, resolves conflicts it can explain, and works through review comments, until nothing is left or a pass limit is hit. Use when a PR has red checks, conflicts, or review feedback. Not for merging (it stops at ready to merge), not for reviewing a change (/repertoire:review-change), not for writing the PR description, not for rerunning flaky jobs until they pass, not for explaining a PR's status or a failure without fixing it, and not for triaging comments without the CI loop (taking-review-feedback).
-allowed-tools: Bash(gh pr view *), Bash(gh pr checks *), Bash(gh run view *), Bash(gh run list *), Bash(git status *), Bash(git log *), Bash(git diff *), Bash(git fetch *), Read, Edit, Write, Grep, Glob
+allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/status.mjs *), Bash(gh pr view *), Bash(gh pr checks *), Bash(gh run view *), Bash(gh run list *), Bash(git status *), Bash(git log *), Bash(git diff *), Bash(git fetch *), Read, Edit, Write, Grep, Glob
 ---
 
 # PR shepherd
@@ -43,28 +43,30 @@ Find and record each of these; they hold for every pass.
 
 ### 1. Status pass (read-only)
 
-Run all three and note `headRefOid`; every later judgment is about that commit.
+Run the status script. It makes the three queries (PR view, checks, and every page of review threads) and prints one JSON object. It is read-only.
 
 ```sh
-gh pr view <n> --json number,state,isDraft,url,author,isCrossRepository,headRefName,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision
-gh pr checks <n> --json name,bucket,state,link,workflow
-gh api graphql -F owner='{owner}' -F repo='{repo}' -F pr=<n> -f query='
-  query($owner:String!,$repo:String!,$pr:Int!){ repository(owner:$owner,name:$repo){ pullRequest(number:$pr){
-    reviewThreads(first:100){ pageInfo{ hasNextPage endCursor } nodes{ id isResolved isOutdated path line
-      comments(first:50){ nodes{ author{login} body url createdAt } } } } } } }'
+node "${CLAUDE_SKILL_DIR}/scripts/status.mjs" <n>
 ```
+
+Omit `<n>` to use the current branch's PR. Also run `gh pr view <n> --json headRefOid,isDraft,reviewDecision` once per pass; every later judgment is about that commit. Output shape: `{checks:[{name,state}], mergeable, conflicts, unresolvedThreads:[{id,path,line,author,body}], ready}`. Each thread's `author` and `body` come from its last comment. Branch on the exit code, and read the JSON for what to fix:
+
+- `0`: ready. Every check passed, there are no conflicts, and no thread is unresolved.
+- `1`: not ready. The JSON on stdout says why. This is the normal case, not an error.
+- `2`: `gh` is missing or not authenticated. Stop with the fix from stderr (`gh auth login`).
+- `3`: any other error, such as a closed PR or a failed query. Read stderr, fix the cause or stop; never treat the output as a status.
 
 Read the results this way:
 
-- `bucket` is `pass`, `fail`, `pending`, `skipping`, or `cancel`. `gh pr checks` exits non-zero for pending as well as failing, so branch on `bucket`, not the exit code.
-- `mergeable` is `UNKNOWN` for a while after every push because GitHub computes it asynchronously. Wait 15 seconds and re-query, up to four times, before reading it. `CONFLICTING` means step 2; `MERGEABLE` with `mergeStateStatus: BEHIND` means an update without conflicts, which step 2 also covers.
-- Each unresolved thread is in one of two states. **Live:** its last comment is not yours (compare `author.login` with `gh api user --jq .login`). **Awaiting the reviewer:** its last comment is yours. Only live threads need work; a thread stays unresolved after you answer it until the reviewer acts, so counting those as work would make the loop unfinishable. If `hasNextPage` is true, page with `after: <endCursor>` before deciding.
-- An outdated live thread (`isOutdated: true`) may already be addressed by an earlier push; check, and if so reply naming the commit rather than changing code again.
+- `state` is gh's check state (`SUCCESS`, `FAILURE`, `PENDING`, `SKIPPED`, and so on). The script counts success and skipped as passed. For the bucket, `link`, and `workflow` of a failing check, use `gh pr checks <n> --json name,bucket,state,link,workflow`.
+- `mergeable` is `UNKNOWN` for a while after every push because GitHub computes it asynchronously. The script reports it as not ready and says so on stderr. Wait 15 seconds and re-run, up to four times, before reading it. `conflicts: true` means step 2; `MERGEABLE` with `mergeStateStatus: BEHIND` (from `gh pr view <n> --json mergeStateStatus`) means an update without conflicts, which step 2 also covers.
+- `unresolvedThreads` lists every unresolved thread in two states. **Live:** its `author` is not you (compare with `gh api user --jq .login`). **Awaiting the reviewer:** its `author` is you. Only live threads need work; a thread stays unresolved after you answer it until the reviewer acts, so counting those as work would make the loop unfinishable. `ready` stays false while any thread is unresolved, so judge doneness from the live ones, not from `ready` alone.
+- An outdated live thread may already be addressed by an earlier push; check, and if so reply naming the commit rather than changing code again.
 - `reviewDecision: CHANGES_REQUESTED` with no live thread means the feedback is in a review body. Read it with `gh pr view <n> --json reviews --jq '.reviews[] | select(.state=="CHANGES_REQUESTED") | .body'` and treat each point as a live thread, replying as a PR comment (`gh pr comment`).
 
 Decide:
 
-- Every required check is `pass` on `headRefOid`, `mergeable` is `MERGEABLE`, no thread is live: done. Go to Report. Threads awaiting the reviewer go under unverified; they don't block done.
+- Exit `0`, or exit `1` where the only reason is threads awaiting the reviewer and the required checks pass on `headRefOid`: done. Go to Report. Threads awaiting the reviewer go under unverified; they don't block done.
 - Nothing fails but a required check is `pending`: go to step 5's wait.
 - Otherwise, work in this order, then push once: conflicts (step 2), review threads (step 3), failing checks (step 4). Conflicts first because checks on a stale base are wasted; threads before checks because a reviewer's request can change the code the failing check runs against.
 
@@ -86,7 +88,7 @@ Load the `taking-review-feedback` skill and apply it to every live thread before
 - Rerun safety: a thread awaiting the reviewer is not yours to touch. Never post a second reply to the same point.
 - Reply after the fix is pushed, naming the commit, so the reviewer can check it. A pushback reply needs no commit, so post it at the end of this step. Resolve only under the convention from step 0.
 
-Read [`references/github-commands.md`](references/github-commands.md) for the reply and resolve mutations and for reading CI logs, and for the `mergeStateStatus` table when the status is anything other than `CLEAN`, `BEHIND`, or `DIRTY`; the status queries above are the only ones needed every pass.
+Read [`references/github-commands.md`](references/github-commands.md) for the reply and resolve mutations and for reading CI logs, and for the `mergeStateStatus` table when the status is anything other than `CLEAN`, `BEHIND`, or `DIRTY`; the status script is the only query needed every pass.
 
 ### 4. Fix failing checks at their cause
 

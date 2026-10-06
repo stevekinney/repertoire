@@ -4,11 +4,12 @@
 
 ## Shape
 
-The file is a JSON array. Every entry has exactly these fields, in this order:
+The file is a JSON array. Every entry has exactly these fields, in this order (`category` is optional; the rest are required):
 
 ```json
 [
   {
+    "id": "signup-valid-email",
     "category": "functional",
     "description": "Submitting the signup form with a valid email creates an account and lands on the dashboard",
     "steps": [
@@ -23,12 +24,13 @@ The file is a JSON array. Every entry has exactly these fields, in this order:
 ]
 ```
 
+- `id`: a unique, stable, non-empty slug. `scripts/check-feature-list.mjs` requires it.
 - `category`: a short label a loop can group or filter by. Use the project's own vocabulary when it has one; otherwise `functional`, `ui`, `api`, `cli`, `performance`, or `security`.
 - `description`: one sentence of observable behavior, as a user or caller would see it. Not "implement the signup module".
 - `steps`: how to reproduce and confirm it by hand, from a started app. The last step is always what to expect. A session that can't follow these steps can't claim the item.
 - `passes`: `false` for every entry when this skill writes the file. The sample email above is a sample; use the project's test fixtures when it has them.
 
-Keep the fields to these four unless the project already has a feature-list convention. Extra fields invite a session to edit more than `passes`.
+Keep the fields to these five unless the project already has a feature-list convention. Extra fields invite a session to edit more than `passes`.
 
 ## Quality bar
 

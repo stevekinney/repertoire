@@ -55,16 +55,21 @@ Each recipe names what to search and what to keep. Run the searches with the ter
 
 ### Git history
 
-Run from the repository root, redirecting output to the staging file so nothing enters the session's context. Pull requests need `gh`; skip them when it is absent and say so.
+Skip `gh` pull requests when it is absent and say so.
+
+Run the bundled script from the repository root. It writes the commits, PR references from commit subjects, and blame summaries to files in the staging record format, so nothing enters the session's context:
 
 ```sh
-git log --all --since=<window-start> -i --fixed-strings --grep=<ticket-id> --format='--- source: git | where: %h | who: %an | when: %aI | link: %H ---%n%B' >> <staging-file>
-git log --all --since=<window-start> -i --fixed-strings --grep=<term> --format='--- source: git | where: %h | who: %an | when: %aI | link: %H ---%n%B' >> <staging-file>
-git log --since=<window-start> --format='--- source: git | where: %h | who: %an | when: %aI | link: %H ---%n%B' -- <path-from-ticket> >> <staging-file>
-gh pr list --state all --search '<ticket-id> OR <term>' --json number,title,state,author,createdAt,url,body --jq '.[] | "--- source: pr | where: #\(.number) | who: \(.author.login) | when: \(.createdAt) | link: \(.url) ---\n\(.title)\n\(.body)"' >> <staging-file>
+node "${CLAUDE_SKILL_DIR}/scripts/stage-git.mjs" --out <staging-dir> --term <ticket-id> --term <term> --path <path-from-ticket> --since <window-start>
 ```
 
-One `git log` per term and per path from the ticket. `git blame` on a path only when the ticket names a specific line or symbol; stage the blamed commits' messages, not the blame table.
+Pull requests beyond those named in commit subjects need `gh`, which the script does not call:
+
+```sh
+gh pr list --state all --search '<ticket-id> OR <term>' --json number,title,state,author,createdAt,url,body --jq '.[] | "--- source: pr | where: #\(.number) | who: \(.author.login) | when: \(.createdAt) | link: \(.url) ---\n\(.title)\n\(.body)"' > <staging-dir>/git-gh-prs.md
+```
+
+One `--term` per term and `--path` per path from the ticket. The script's blame summary (top authors, most recent commit per line range) is staged only for the paths you pass, so pass paths the ticket names.
 
 ## Copy-only brief for a connector searcher
 

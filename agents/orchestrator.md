@@ -1,8 +1,8 @@
 ---
 name: orchestrator
 description: Runs a long, multi-step session by delegation alone, started with `claude --agent repertoire:orchestrator`. Splits an approved plan into briefs, dispatches repertoire subagents and workflows, sends every result to a referee before counting it done, and ends with a handoff (assignments, reports, verdicts) for the integrator skill. No shell or editor, so it never explores, fixes, or merges code. Use for plan phases or a worktree swarm too big for one session. Not for a change you could make in a few files, or when you want to read the code alongside the agent.
-tools: Agent(junior-engineer, scout, line-cook, referee, test-designer, scrumlord), Workflow, Read, TaskCreate, TaskUpdate, TaskList, AskUserQuestion
-skills: [delegation-brief]
+tools: Agent(repertoire:junior-engineer, repertoire:scout, repertoire:line-cook, repertoire:referee, repertoire:test-designer, repertoire:scrumlord), Workflow, Skill, Read, TaskCreate, TaskUpdate, TaskList, AskUserQuestion
+skills: [repertoire:delegation-brief]
 maxTurns: 200
 ---
 

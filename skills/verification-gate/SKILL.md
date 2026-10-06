@@ -1,6 +1,7 @@
 ---
 name: verification-gate
 description: Stops the agent from claiming work is done, fixed, or passing until it has fresh evidence. Maps each claim to its proof, reruns the proving command after the final edit and reads the whole output, inspects the final diff, and reports what could not be tested. Use before reporting completion or committing, and whenever "should", "probably", or "seems to" appears in the claim. Not for judging a written stopping condition (repertoire:referee), reviewing quality (/repertoire:review-change), or fixing a failure it finds.
+allowed-tools: Bash(node ${CLAUDE_SKILL_DIR}/scripts/scan-diff.mjs *)
 ---
 
 # Verification gate
@@ -57,15 +58,28 @@ Most common false success: the test script exits 0 after printing `No tests foun
 
 ### 4. Inspect the final diff
 
-Run `git diff`, `git diff --cached`, and `git status --porcelain` for untracked files, and read every hunk. You are about to vouch for it. Look for:
+Run the scanner for the ways a "done" gets faked, then read every hunk yourself:
 
-- Deleted, skipped, or `only`-ed tests, or assertions rewritten to match the output you got.
+```
+node "${CLAUDE_SKILL_DIR}/scripts/scan-diff.mjs" --base <ref>
+```
+
+`--base <ref>` diffs the working tree (staged and unstaged) against `<ref>`; omit it to diff against `HEAD`. Untracked files are not in a git diff, so list them with `git status --porcelain` and read them directly. To scan a diff you already have, pipe it in with `--stdin`.
+
+It prints `{"findings":[{"kind","file","line","text"}]}` on stdout and a one-line count on stderr. For added lines `line` is the new-file line; for removed lines it is the old-file line. Exit codes:
+
+- `0`: no findings. Still read the diff; the scanner knows only the patterns below.
+- `1`: findings. Each one comes out before the claim, or goes in the report by name with the reason it stays. Kinds: `test-file-deleted`, `assertion-removed`, `test-skipped` (`.skip`, `.only`, `xit`, `xdescribe`, and similar), `expected-value-edited` (a test's expected value changed in the same diff as source code), `lint-or-type-rule-disabled` (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `# noqa`, and similar), `threshold-lowered` (coverage or similar limits in config), `snapshot-updated`.
+- `2`: the scan did not run (bad arguments, not a git repository, unknown ref). The diff is unscanned: fix the invocation, or report the diff as unverified.
+
+Then read every hunk for what the scanner can't see:
+
 - Debug output, commented-out code, TODOs, leftover reproduction files.
 - Files you don't remember changing, and changes unrelated to the claim.
 - A regression test that doesn't exist for a bug you say is fixed.
 - Config or lockfile changes the task didn't call for.
 
-Anything on that list either comes out before the claim or goes in the report by name.
+Anything on either list either comes out before the claim or goes in the report by name.
 
 ### 5. Decide what you can say
 

@@ -1,7 +1,7 @@
 ---
 name: browser-check
 description: Checks the agent's own UI work in a real browser by starting the app locally, writing short Playwright scripts that look before they act, reading the console, and fixing what it finds in the same session. Use after changing anything a user sees in a web app, before calling the change done. Not for writing the permanent end-to-end suite, reviewing visual design, browsing external sites, or checking a deployed environment unless the user names one, or proving non-UI work before completion (repertoire:verification-gate).
-allowed-tools: Bash(node .browser-check/*), Bash(curl http://localhost:*), Bash(curl http://127.0.0.1:*), Read, Write(.browser-check/**)
+allowed-tools: Bash(node .browser-check/*), Bash(node ${CLAUDE_SKILL_DIR}/scripts/server.mjs *), Bash(curl http://localhost:*), Bash(curl http://127.0.0.1:*), Read, Write(.browser-check/**)
 ---
 
 # Browser check
@@ -20,11 +20,17 @@ Read scope: the project, the running app, and the browser's console and network.
 
 1. **Project note.** Read `.claude/browser-check.md` in the project if it exists. It records how to start the app, the URL, how to load test data, how to sign in as a test user, and the routes for each feature. If it's missing, discover those facts from `package.json` scripts, the README, an existing Playwright config, and `.env.example`, then offer to write the note from the template at `${CLAUDE_SKILL_DIR}/assets/project-notes.md`. Don't write it without asking; it's a file in their repository.
 2. **Playwright.** Check `package.json` for `@playwright/test` or `playwright`, and import whichever is present. If neither is installed, stop and ask before adding it; the install adds a dependency and downloads browsers. Offer the exact command (`npm i -D playwright && npx playwright install chromium`, or the project's package manager's equivalent).
-3. **Scratch folder.** Write scripts to `.browser-check/` at the project root, not to an OS temp directory, because Node resolves `import 'playwright'` from the script's own directory and a script outside the project can't find `node_modules`. Don't add it to `.gitignore`; it's deleted at teardown, and the repository shouldn't change for a check. If `.browser-check/` already exists, it's a leftover from an interrupted run: stop the group in `server.pid` if it still answers, then clear the folder before writing new scripts. Write scripts as plain `.mjs` and run them with `node`, unless discovery shows the project already runs Playwright through another runner (`tsx`, `bun`, the test runner); then use that.
+3. **Scratch folder.** Write scripts to `.browser-check/` at the project root, not to an OS temp directory, because Node resolves `import 'playwright'` from the script's own directory and a script outside the project can't find `node_modules`. Don't add it to `.gitignore`; it's deleted at teardown, and the repository shouldn't change for a check. If `.browser-check/` already exists, it's a leftover from an interrupted run: run `node "${CLAUDE_SKILL_DIR}/scripts/server.mjs" stop` to stop any recorded server, then clear the folder before writing new scripts. Write scripts as plain `.mjs` and run them with `node`, unless discovery shows the project already runs Playwright through another runner (`tsx`, `bun`, the test runner); then use that.
 
 ## Procedure
 
-1. **Start the app.** Follow [`references/server-loop.md`](references/server-loop.md) to probe for a running instance, start one in the background if needed, wait for readiness, and capture its log. Reuse a running server; starting a second copy on the same port is the most common way to test the wrong build. Load test data and sign in the way the project note says. If the note is silent on sign-in and the surface needs it, use only accounts from the project's seed or fixture files. Never type real credentials, and never run against a non-local host unless the user named it; then act read-only.
+1. **Start the app.** Run `node "${CLAUDE_SKILL_DIR}/scripts/server.mjs" start --cmd "<start command>" --url <url> [--timeout <seconds>]` with the command and URL from the project note (default timeout 60 seconds). It probes the URL, reuses whatever already answers, otherwise starts the command in its own process group, records it in `.browser-check/server.pid`, logs to `.browser-check/server.log`, and waits for readiness. It prints `{"result":"started"|"found"|"timeout","url":...}`. Branch on the exit code:
+   - **0, `started` or `found`:** continue. Confirm a `found` server is this project (page title, a known route), not an unrelated app on the port; if it isn't, don't kill it, start on another port if the command accepts one, otherwise stop and ask.
+   - **3, `timeout`:** the server is still running. Read the last twenty lines of `.browser-check/server.log`, fix at most one configuration problem (missing environment variable, database not up, port bound, dependencies missing), run `stop`, and start once more. A second timeout is a stop-and-report.
+   - **1, failed:** the command could not start or exited early; the message on stderr and the log say why. Treat it like a timeout.
+   - **2, usage error:** fix the arguments.
+
+   Load test data and sign in the way the project note says; [`references/server-loop.md`](references/server-loop.md) covers multi-process apps, seeding, and rebuild checks. If the note is silent on sign-in and the surface needs it, use only accounts from the project's seed or fixture files. Never type real credentials, and never run against a non-local host unless the user named it; then act read-only.
 
 2. **Confirm the new code is served.** Before judging anything, prove the page runs the change: the server log shows a rebuild after your edit, or the page contains a string that exists only in the new code. A stale bundle makes every later result meaningless.
 
@@ -41,7 +47,7 @@ Read scope: the project, the running app, and the browser's console and network.
 
 6. **Fix and rerun.** When the claim fails because of the change, fix the source, confirm the rebuild, and rerun the same script. Bound this at three rounds. After the third failure, stop and report what you saw with the screenshots; don't widen the change to make the check pass.
 
-7. **Tear down.** Stop only the servers you started, by process group. Leave a server you found running. Delete `.browser-check/` unless the user asked to keep the scripts. Don't move them into the project's test suite; that's a separate task with its own conventions.
+7. **Tear down.** Run `node "${CLAUDE_SKILL_DIR}/scripts/server.mjs" stop`. It stops only the process group a `start` recorded, so a server reported as `found` is left alone, and it exits 0 when nothing was recorded. Delete `.browser-check/` unless the user asked to keep the scripts. Don't move them into the project's test suite; that's a separate task with its own conventions.
 
 ## Stopping rules
 

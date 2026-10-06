@@ -1,7 +1,7 @@
 ---
 name: integrator
 description: Merges worker branches one at a time, in dependency order, onto an integration branch, running the full checks after each merge. Stops at the first conflict or failure and names the branch and the check; regenerates lockfiles once at the end; ends at a menu and never pushes or touches the base itself. Use after /repertoire:worktree-swarm or an orchestrator handoff. Not for resolving conflicts, fixing checks, or writing pull request descriptions.
-allowed-tools: Bash(git status *), Bash(git rev-parse *), Bash(git fetch *), Bash(git rev-list *), Bash(git diff *), Bash(git merge-tree *), Bash(git merge-base *), Bash(git switch *), Bash(git merge *), Bash(git checkout --ours *), Bash(git add *), Bash(git commit *), Bash(git reset *), Bash(git worktree list *), Read, Grep, Glob
+allowed-tools: Bash(git status *), Bash(git rev-parse *), Bash(git fetch *), Bash(git rev-list *), Bash(git diff *), Bash(git merge-tree *), Bash(git merge-base *), Bash(node ${CLAUDE_SKILL_DIR}/scripts/integrate.mjs *), Bash(git switch *), Bash(git merge *), Bash(git checkout --ours *), Bash(git add *), Bash(git commit *), Bash(git reset *), Bash(git worktree list *), Read, Grep, Glob
 disable-model-invocation: true
 ---
 
@@ -36,7 +36,7 @@ git fetch --quiet                 # skip this and the next line when there is no
 git rev-list --count <base>..origin/<base>   # non-zero: the remote is ahead; report it, continue
 ```
 
-A dirty tree is a stop: stashing and resetting are the user's call. For each branch, run `git rev-list --count <base>..<branch>`. Zero means nothing to merge: skip it and say so, unless its handoff verdict was `met`, which is a stop (see [references/handoff.md](references/handoff.md)).
+A dirty tree is a stop: stashing and resetting are the user's call. The plan in step 2 shows which branches have no commits ahead of the base. An empty branch has nothing to merge: skip it and say so, unless its handoff verdict was `met`, which is a stop (see [references/handoff.md](references/handoff.md)).
 
 Discover the checks and the generated files, in this order, and stop at the first that answers:
 
@@ -52,8 +52,16 @@ Use the first that applies:
 
 1. The handoff's `mergeOrder`, or an order the user gives.
 2. Dependencies the workers reported (a branch that another branch builds on lands first; a branch flagged as affecting another task's files lands last).
-3. Predicted overlap: `git diff --name-only <base>...<branch>` per branch; a branch that touches files another branch also touches lands last; among branches that overlap each other, keep the order given. `git merge-tree --write-tree <base> <branch>` (non-zero exit means it conflicts with the base alone) tells you before you start which branch will stop the run.
+3. The plan's overlaps and predictions (below): a branch that shares files with another branch lands last; among branches that overlap each other, keep the order given. A branch predicted to `conflict` against the base alone is the one that will stop the run; say so before you start.
 4. The order given.
+
+Get the facts without touching anything:
+
+```sh
+node "${CLAUDE_SKILL_DIR}/scripts/integrate.mjs" plan --base <base> <branch>...
+```
+
+It prints JSON to stdout: per branch, `commits` ahead of the base, `files` touched, `alreadyMerged`, and `prediction` (`clean`, `conflict` with `conflictingFiles`, or `unknown` when git is older than 2.38); plus `overlaps`, the shared files for every pair. It never checks out, merges, or changes a ref. Exit codes: `0` the plan was printed; `2` bad arguments, fix the command; `3` it could not plan (not a repository, or a base or branch that does not exist; the message on stderr names it), so stop and report that. `unknown` means no prediction, not safe.
 
 Two branches that solve the same problem are a decision, not an order. Stop and ask which one lands; never blend them.
 
