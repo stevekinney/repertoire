@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # Don't install git hooks on the runner.
+      LEFTHOOK: 0
+    steps:
+      - uses: actions/checkout@v7
+
+      # Reads the pinned version from `packageManager` in package.json. The bundles depend on the
+      # Bun version, so `check` would fail on a different one.
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun run test
+
+      - name: Lint skills and subagents
+        run: bun run lint
+
+      - name: Check that skills/ matches src/skills/
+        run: bun run check
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code
+
+      - name: Validate plugin
+        run: bun run validate

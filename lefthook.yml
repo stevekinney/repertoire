@@ -1,0 +1,43 @@
+# Git hooks. Installed automatically by `bun install`; run `bunx lefthook install` if they're missing.
+
+pre-commit:
+  # Run jobs in order and stop at the first failure.
+  piped: true
+  jobs:
+    - name: typecheck
+      glob:
+        - "src/**"
+        - "scripts/**"
+        - "tsconfig.json"
+        - "package.json"
+        - "bun.lock"
+      run: bun run typecheck
+
+    - name: test
+      glob:
+        - "scripts/**"
+        - "package.json"
+        - "bun.lock"
+      run: bun run test
+
+    # The build also lints src/skills/, but agents/ and workflows/ aren't built, so lint everything here.
+    - name: lint
+      glob:
+        - "src/**"
+        - "agents/**"
+        - "workflows/**"
+        - "scripts/**"
+        - "package.json"
+        - "bun.lock"
+      run: bun run lint
+
+    # skills/ is generated from src/skills/ and committed, because installing the plugin doesn't run a build.
+    # Rebuild it and stage the result so GitHub always has bundles that match the source.
+    - name: build skills
+      glob:
+        - "src/**"
+        - "skills/**"
+        - "scripts/**"
+        - "package.json"
+        - "bun.lock"
+      run: bun run build && git add skills

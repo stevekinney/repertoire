@@ -1,0 +1,13 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "repertoire",
+  "version": "0.1.0",
+  "description": "Steve Kinney's skills and workflows for AI-assisted software development.",
+  "author": {
+    "name": "Steve Kinney",
+    "email": "hello@stevekinney.net"
+  },
+  "homepage": "https://github.com/stevekinney/repertoire",
+  "repository": "https://github.com/stevekinney/repertoire",
+  "license": "MIT"
+}

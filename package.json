@@ -1,0 +1,21 @@
+{
+  "name": "repertoire",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "check": "bun scripts/build.ts --check",
+    "lint": "bun scripts/lint.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src",
+    "validate": "claude plugin validate --strict . && claude plugin validate --strict .claude-plugin/plugin.json && claude plugin validate --strict skills"
+  },
+  "devDependencies": {
+    "@lostgradient/skillset": "0.1.0",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.4",
+    "lefthook": "^2.1.17",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "bun@1.4.2"
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Codex review verdict",
+  "description": "Shape of a Codex consult that the consult-codex skill verifies finding by finding. Every property is required and no extra properties are allowed, which structured output enforcement expects.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "scope_read", "findings", "unchecked"],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["no-findings", "findings", "cannot-answer"],
+      "description": "no-findings only after the whole scope was read; cannot-answer when the scope was missing or unreadable."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Two or three sentences on what was reviewed and the overall conclusion."
+    },
+    "scope_read": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files or refs actually read, so a no-findings verdict can be checked for coverage."
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "file", "line", "claim", "evidence", "suggestion"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["blocker", "major", "minor", "question"] },
+          "file": { "type": "string", "description": "Repository-relative path." },
+          "line": { "type": ["integer", "null"], "description": "1-based line, or null when the finding is not tied to one line." },
+          "claim": { "type": "string", "description": "What is wrong, in one sentence." },
+          "evidence": { "type": "string", "description": "The code or behavior that shows it, quoted or described precisely enough to be checked." },
+          "suggestion": { "type": "string", "description": "A fix or a test that would catch it, or an empty string." }
+        }
+      }
+    },
+    "unchecked": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Things in scope that could not be assessed and why."
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "repertoire",
+  "owner": {
+    "name": "Steve Kinney",
+    "email": "hello@stevekinney.net"
+  },
+  "metadata": {
+    "description": "Steve Kinney's Claude Code plugins for AI-assisted software development."
+  },
+  "plugins": [
+    {
+      "name": "repertoire",
+      "source": "./",
+      "description": "Steve Kinney's skills and workflows for AI-assisted software development."
+    }
+  ]
+}
